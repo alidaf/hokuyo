@@ -94,7 +94,7 @@ uint8_t decode(int fd, uint16_t len)
 const char *read_data(int fd)
 {
 
-//    char    *ret;
+//    char    *ret;     // Causes segfault @ ret[n++] = c;
     char ret[] = {'0'};
     char    c;
     uint8_t n;
