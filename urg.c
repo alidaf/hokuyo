@@ -24,6 +24,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <stdbool.h>
 
 #define DEBUG 1 // Debugging output switch.
 
@@ -54,19 +55,134 @@
 #define CMD_GET_DATA_SING2  "GS"    // Measurement data (2-byte).
 #define CMD_GET_DATA_SING3  "GD"    // Measurement data (3-byte).
 
+/* Number of lines returned for each command. */
+#define RET_VERSION_LINES    7
+
+/* Maximum data block size */
+#define RET_DATA_BLOCK_MAX  64
+
 // ASCII codes for commands and data.
 #define LF "\n" // Line Feed.
 #define CR "\r" // Carriage Return.
+
+#define STRING_NULL '\0'
+#define STRING_LF   '\n'
 
 #define USB_PORT "/dev/ttyACM0" // Output port for USB.
 
 //  Commands ------------------------------------------------------------------
 
 
+void empty_buffer(int fd)
+{
+    char c;
+    while(read(fd, &c, 1) > 0);
+}
+
+/*
+uint8_t decode(int fd, uint16_t len)
+{
+
+
+
+}
+*/
+
 //  ===========================================================================
-//  Encodes and sends command.
+//  Reads data.
 //  ===========================================================================
-const char *encode_command(int fd, char command[2], const char *string)
+const char *read_data(int fd)
+{
+
+//    char    *ret;
+    char ret[] = {'0'};
+    char    c;
+    uint8_t n;
+    bool    data_end = false;
+    bool    line_end = false;
+    ssize_t err;
+
+    n = 0;
+//    ret = "";
+
+    if (DEBUG) printf("Reading port:\n");
+
+    while (!data_end)
+    {
+        err = read(fd, &c, 1);
+        printf("n = %d, s = %c\n", n, c);
+        if (err <= 0)
+        {
+            printf("Error reading, err = %d.\n", (int)err);
+            data_end = true;
+        }
+
+        ret[n++] = c;
+        if (n > 1)
+        {
+            if ((c = STRING_LF) && (ret[n-1] = STRING_LF))
+            {
+                printf("\nEnd of data.\n");
+                data_end = true;
+            }
+        }
+    }
+
+    if (DEBUG) printf("Data = %s\n", ret );
+
+/*
+        while (!line_end)
+        {
+
+            if (DEBUG) printf("n = %d\n", n);
+            err = read(fd, &c, 1);
+            if (err <= 0)
+            {
+                if (DEBUG) printf("Read error.\n");
+                line_end = true;
+                data_end = true;
+                break;
+            }
+            if (DEBUG) printf("%c", c);
+            ret[n++] = c;
+
+            // Check for double LF in sequence - end of data.
+            if (DEBUG) printf("Checking for double LF.\n");
+            if ((n > 0 ) && (c = STRING_LF) && (ret[n-1] = STRING_LF))
+            {
+                data_end = true;
+                printf("End of data.\n");
+            }
+            // Check whether there is anything on port.
+            if (c <= 0 )
+            {
+                data_end = true;
+                if (DEBUG) printf("Nothing there!\n");
+            }
+            // Check for LF - end of line.
+            if ((c <= 0) || (c = STRING_LF))
+            {
+                line_end = true;
+            }
+            // Check for maximum line length.
+            if (n >= RET_DATA_BLOCK_MAX)
+            {
+                line_end = true;
+                printf("Max block length reached\n");
+            }
+        }
+    if (DEBUG) printf("\n");
+
+    }
+*/
+    return *ret;
+
+}
+
+//  ===========================================================================
+//  Sends command.
+//  ===========================================================================
+int send_command(int fd, char command[2], const char *string)
 {
     /*
         fd is file descriptor.
@@ -74,32 +190,32 @@ const char *encode_command(int fd, char command[2], const char *string)
         string + command must be <= 16 chars.
     */
 
-
-    if (DEBUG) {
-        printf("Command = %s\n", command);
-        printf("String  = %s\n", string);
-    }
-
     ssize_t err;
-    char    c;
     char    buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
-    char   *ret;
-    uint16_t n;
+    char    c;
 
     /* concatenate command with string & line feed. */
     strcpy(buf, command);
     strcat(buf, string);
     strcat(buf, LF);
 
-    err = write(fd, buf, strlen(buf));
-    /* Add error trapping. */
-
-    /* Read in return data. */
-    n = 0;
-    ret = "";
-    while (read(fd, &c, 1) > 0 && c != '\n') {
-        ret[n++] = c;
+    if (DEBUG)
+    {
+        printf("Command  = %s\n", command);
+        printf("String   = %s\n", string);
+        printf("Combined = %s\n", buf);
     }
+
+    err = write(fd, buf, strlen(buf));
+    if (err < 0)
+    {
+        return (err);
+    }
+
+    usleep( 100000 );
+    return (0);
+
+//    while(read(fd, &c, 1) > 0 && c != STRING_LF);
 }
 
 //  ===========================================================================
@@ -109,24 +225,40 @@ const char *encode_command(int fd, char command[2], const char *string)
 
 
 */
-uint8_t get_version()
+void get_version()
 {
     if (DEBUG) PRINT_CMD(CMD_GET_VERSION);
-
 
 }
 
 
-int main()
+int main(void)
 {
 
     const char *data;
+//    char data[];
+    int fd;
+    int err;
 
     /* Open port. */
-    int fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
-    data = encode_command(fd, CMD_GET_VERSION, "Nothing");
+    if (fd < 0) printf("Could not open port\n");
+    else printf("Opened USB port\n");
+    empty_buffer(fd);
+
+    err = send_command(fd, CMD_GET_VERSION, "Jaguar");
+
+    if (err < 0)
+    {
+        printf("Error sending command, err = %d.\n", err);
+    }
+
+    data = read_data(fd);
+
+    printf("Return = %s\n", data );
 
     close(fd);
-    return 0;
+
+    return (0);
 }
