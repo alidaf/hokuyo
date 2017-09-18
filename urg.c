@@ -21,6 +21,7 @@
 #include "urg.h"
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <fcntl.h>
@@ -89,93 +90,19 @@ uint8_t decode(int fd, uint16_t len)
 */
 
 //  ===========================================================================
-//  Reads data.
+//  Returns data block from sensor.
 //  ===========================================================================
-const char *read_data(int fd)
+void read_data(int fd, char *data)
 {
 
-//    char    *ret;     // Causes segfault @ ret[n++] = c;
-    char ret[] = {'0'};
     char    c;
-    uint8_t n;
-    bool    data_end = false;
-    bool    line_end = false;
-    ssize_t err;
+    uint8_t i;
 
-    n = 0;
-//    ret = "";
-
-    if (DEBUG) printf("Reading port:\n");
-
-    while (!data_end)
+    i = 0;
+    while (read(fd, &c, 1) > 0 && c != '\n')
     {
-        err = read(fd, &c, 1);
-        printf("n = %d, s = %c\n", n, c);
-        if (err <= 0)
-        {
-            printf("Error reading, err = %d.\n", (int)err);
-            data_end = true;
-        }
-
-        ret[n++] = c;
-        if (n > 1)
-        {
-            if ((c = STRING_LF) && (ret[n-1] = STRING_LF))
-            {
-                printf("\nEnd of data.\n");
-                data_end = true;
-            }
-        }
+        data[i++] = c;
     }
-
-    if (DEBUG) printf("Data = %s\n", ret );
-
-/*
-        while (!line_end)
-        {
-
-            if (DEBUG) printf("n = %d\n", n);
-            err = read(fd, &c, 1);
-            if (err <= 0)
-            {
-                if (DEBUG) printf("Read error.\n");
-                line_end = true;
-                data_end = true;
-                break;
-            }
-            if (DEBUG) printf("%c", c);
-            ret[n++] = c;
-
-            // Check for double LF in sequence - end of data.
-            if (DEBUG) printf("Checking for double LF.\n");
-            if ((n > 0 ) && (c = STRING_LF) && (ret[n-1] = STRING_LF))
-            {
-                data_end = true;
-                printf("End of data.\n");
-            }
-            // Check whether there is anything on port.
-            if (c <= 0 )
-            {
-                data_end = true;
-                if (DEBUG) printf("Nothing there!\n");
-            }
-            // Check for LF - end of line.
-            if ((c <= 0) || (c = STRING_LF))
-            {
-                line_end = true;
-            }
-            // Check for maximum line length.
-            if (n >= RET_DATA_BLOCK_MAX)
-            {
-                line_end = true;
-                printf("Max block length reached\n");
-            }
-        }
-    if (DEBUG) printf("\n");
-
-    }
-*/
-    return *ret;
 
 }
 
@@ -192,7 +119,6 @@ int send_command(int fd, char command[2], const char *string)
 
     ssize_t err;
     char    buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
-    char    c;
 
     /* concatenate command with string & line feed. */
     strcpy(buf, command);
@@ -221,24 +147,41 @@ int send_command(int fd, char command[2], const char *string)
 //  ===========================================================================
 //  Returns version information.
 //  ===========================================================================
-/*
-
-
-*/
-void get_version()
+int get_version(int fd, char string[16], version_t *version)
 {
+    int     err;
+
     if (DEBUG) PRINT_CMD(CMD_GET_VERSION);
 
+    empty_buffer(fd);
+
+    err = send_command(fd, CMD_GET_VERSION, string);
+    if (err < 0)
+    {
+        if (DEBUG) printf("Error sending command, err = %d.\n", err);
+        return (err);
+    }
+
+    read_data(fd, version->command);
+    read_data(fd, version->string);
+    read_data(fd, version->vendor);
+    read_data(fd, version->product);
+    read_data(fd, version->firmware);
+    read_data(fd, version->protocol);
+    read_data(fd, version->serial);
+
+    return (0);
 }
 
 
 int main(void)
 {
 
-    const char *data;
-//    char data[];
     int fd;
     int err;
+
+    version_t version = {"", "", "", "", "", "", ""};
+//    version_t version = malloc(sizeof *version);
 
     /* Open port. */
     fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
@@ -247,16 +190,19 @@ int main(void)
     else printf("Opened USB port\n");
     empty_buffer(fd);
 
-    err = send_command(fd, CMD_GET_VERSION, "Jaguar");
-
+    err = get_version(fd, "jaguar", &version);
     if (err < 0)
     {
-        printf("Error sending command, err = %d.\n", err);
+        printf("Error %d!\n", err);
     }
 
-    data = read_data(fd);
-
-    printf("Return = %s\n", data );
+    printf("Return command = %s\n", version.command);
+    printf("Return string  = %s\n", version.string);
+    printf("Vendor: %s\n", version.vendor);
+    printf("Product: %s\n", version.product);
+    printf("Firmware: %s\n", version.firmware);
+    printf("Protocol: %s\n", version.protocol);
+    printf("Serial: %s\n", version.serial);
 
     close(fd);
 

@@ -94,6 +94,21 @@
 
 */
 
+//  ===========================================================================
+
+//  Types. --------------------------------------------------------------------
+
+typedef struct version_t
+{
+    char command[2];
+    char string[16];
+    char *vendor;
+    char *product;
+    char *firmware;
+    char *protocol;
+    char *serial;
+} version_t;
+
 
 // Functions
 /*
