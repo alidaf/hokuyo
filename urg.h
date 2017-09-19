@@ -102,11 +102,11 @@ typedef struct version_t
 {
     char command[2];
     char string[16];
-    char *vendor;
-    char *product;
-    char *firmware;
-    char *protocol;
-    char *serial;
+    char vendor[64];
+    char product[64];
+    char firmware[64];
+    char protocol[64];
+    char serial[64];
 } version_t;
 
 

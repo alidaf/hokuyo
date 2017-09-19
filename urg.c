@@ -19,14 +19,14 @@
 
 
 #include "urg.h"
-#include <unistd.h>
-#include <stdio.h>
+#include <unistd.h>	    // UNIX standard function definitions.
+#include <stdio.h>	    // Standard Input/Output definitions.
 #include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <fcntl.h>
-#include <stdbool.h>
-#include <termios.h>
+#include <string.h>	    // String function definitions.
+#include <stdint.h>	    // Standard type definitions.
+#include <fcntl.h>	    // File control definitions.
+#include <stdbool.h>	// Boolean definitions.
+#include <termios.h>	// POSIX terminal control definitions.
 
 #define DEBUG 1 // Debugging output switch.
 
@@ -82,6 +82,57 @@
 
 //  Commands ------------------------------------------------------------------
 
+//  ===========================================================================
+//  Initialises serial port.
+//  ===========================================================================
+int init_port()
+{
+    struct termios tty;
+
+    int fd;
+
+    fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
+
+    if (fd < 0)
+    {
+        perror(USB_PORT);
+        exit(-1);
+    }
+
+    if (tcgetattr(fd, &tty) != 0)
+    {
+        perror("tcgetattr");
+    }
+    else
+    {
+        cfsetospeed(&tty, B9600);
+        cfsetispeed(&tty, B9600);
+
+        tty.c_cflag &= ~PARENB;
+        tty.c_cflag &= ~CSTOPB;
+        tty.c_cflag &= ~CSIZE;
+        tty.c_cflag |=  CS8;
+        tty.c_cflag &= ~CRTSCTS;
+        tty.c_cflag |=  CLOCAL | CREAD;
+
+        tty.c_iflag |=  IGNPAR | IGNCR;
+        tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+        tty.c_iflag |=  ICANON;
+        tty.c_iflag &= ~OPOST;
+
+        tcsetattr(fd, TCSANOW, &tty);
+    }
+
+    return fd;
+}
+
+//  ===========================================================================
+//  Turns laser on, returns status.
+//  ===========================================================================
+int set_laser_on(int fd)
+{
+    
+}
 
 //  ===========================================================================
 //  Flushes read buffer.
@@ -102,10 +153,8 @@ void flush_write_buffer(int fd)
 //  ===========================================================================
 //  Returns decoded data.
 //  ===========================================================================
-uint8_t decode(int fd, char *data)
+void decode(int fd, char *data)
 {
-
-
 
 }
 
@@ -113,55 +162,27 @@ uint8_t decode(int fd, char *data)
 //  ===========================================================================
 //  Returns data block from sensor.
 //  ===========================================================================
-void read_data(int fd, char *data)
+int read_data(int fd, char *data)
 {
-    char    c;
-    uint8_t i;
-    int     n;
-    bool    end;
+    char c;
+    int  i;
 
     i = 0;
-
-/*
-    end = false;
-
-    while (end==false)
-    {
-        n = read(fd, data, RET_DATA_BLOCK_MAX);
-        if (n < 0)
-        {
-            perror("Read from port");
-            data = 0;
-            return;
-        }
-
-        data[n] = 0;
-        printf("Buffer = %s:%d", data, n);
-
-        if ((n > 0) && (data[n] == STRING_LF) && (data[n-1] == STRING_LF))
-        {
-            end = true;
-        }
-    }
-*/
-
     while (read(fd, &c, 1) > 0 && c != STRING_LF)
     {
-        perror("Read char");
         data[i++] = c;
-        printf("Data = %c\n", c);
     }
-    perror("End read char");
+    return (i-1);
 
 }
 
 //  ===========================================================================
-//  Returns version information.
+//  Returns version information in version_t.
 //  ===========================================================================
 int get_version(int fd, version_t *version)
 {
-    int  err;
     char buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
+    int  err;
 
 //    flush_write_buffer(fd);
 //    flush_read_buffer(fd);
@@ -175,31 +196,33 @@ int get_version(int fd, version_t *version)
 
     if (err < 0)
     {
-        if (DEBUG) perror("Write to port");
+        printf("Error writing command.\n");
+        perror("Write to port");
         return (-1);
     }
-    else perror("Write to port");
+//    else perror("Write to port");
 
-//    usleep( 100000 );
+    usleep( 100000 );
 
-    read_data(fd, version->command);
-    read_data(fd, version->string);
-    read_data(fd, version->vendor);
-    read_data(fd, version->product);
-    read_data(fd, version->firmware);
-    read_data(fd, version->protocol);
-    read_data(fd, version->serial);
+    err = read_data(fd, version->command);
+    err = read_data(fd, version->string);
+    err = read_data(fd, version->vendor);
+    err = read_data(fd, version->product);
+    err = read_data(fd, version->firmware);
+    err = read_data(fd, version->protocol);
+    err = read_data(fd, version->serial);
 
-    printf("Return command = %s\n", version->command);
-    printf("Return string  = %s\n", version->string);
-    printf("Vendor   : %s\n", version->vendor);
-    printf("Product  : %s\n", version->product);
-    printf("Firmware : %s\n", version->firmware);
-    printf("Protocol : %s\n", version->protocol);
-    printf("Serial   : %s\n", version->serial);
+//    printf("Return command : %s\n", version->command);
+//    printf("Return string  : %s\n", version->string);
+//    printf("VERSION INFO.\n\n");
+//    printf("\tVendor   : %s\n", version->vendor);
+//    printf("\tProduct  : %s\n", version->product);
+//    printf("\tFirmware : %s\n", version->firmware);
+//    printf("\tProtocol : %s\n", version->protocol);
+//    printf("\tSerial   : %s\n", version->serial);
+//    printf("\n");
 
-    return (0);
-
+    return (err);
 }
 
 //  ===========================================================================
@@ -275,32 +298,28 @@ int main(void)
     version_t version = {"", "", "", "", "", "", ""};
 //    version_t version = malloc(sizeof *version);
 
-    /* Open port. */
-    fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
-
-    if (fd < 0)
-    {
-        perror(USB_PORT);
-        exit(-1);
-    }
-    else perror(USB_PORT);
+    fd = init_port();
 
     /* Flush buffers. */
-//    flush_write_buffer(fd);
-//    flush_read_buffer(fd);
+    flush_write_buffer(fd);
+    flush_read_buffer(fd);
 
     err = get_version(fd, &version);
-    perror("Get version");
+    if (err < 0)
+    {
+        printf("Error getting version information.\n");
+    }
+    else
+    {
+        printf("VERSION INFO.\n\n");
+        printf("\tVendor   : %s\n", version.vendor);
+        printf("\tProduct  : %s\n", version.product);
+        printf("\tFirmware : %s\n", version.firmware);
+        printf("\tProtocol : %s\n", version.protocol);
+        printf("\tSerial   : %s\n", version.serial);
+        printf("\n");
+    }
 
-/*
-    printf("Return command = %s\n", version.command);
-    printf("Return string  = %s\n", version.string);
-    printf("Vendor   : %s\n", version.vendor);
-    printf("Product  : %s\n", version.product);
-    printf("Firmware : %s\n", version.firmware);
-    printf("Protocol : %s\n", version.protocol);
-    printf("Serial   : %s\n", version.serial);
-*/
     close(fd);
 
     return (0);
