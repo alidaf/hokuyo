@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <termios.h>
 
 #define DEBUG 1 // Debugging output switch.
 
@@ -56,6 +57,14 @@
 #define CMD_GET_DATA_SING2  "GS"    // Measurement data (2-byte).
 #define CMD_GET_DATA_SING3  "GD"    // Measurement data (3-byte).
 
+#define BIT_RATE_1 "019200" //  19.2 kbps.
+#define BIT_RATE_2 "038400" //  38.4 kbps.
+#define BIT_RATE_3 "057600" //  57.6 kbps
+#define BIT_RATE_4 "115200" // 115.2 kbps.
+#define BIT_RATE_5 "250000" //   250 kbps.
+#define BIT_RATE_6 "500000" //   500 kbps.
+#define BIT_RATE_7 "750000" //   750 kbps.
+
 /* Number of lines returned for each command. */
 #define RET_VERSION_LINES    7
 
@@ -74,93 +83,104 @@
 //  Commands ------------------------------------------------------------------
 
 
-void empty_buffer(int fd)
+//  ===========================================================================
+//  Flushes read buffer.
+//  ===========================================================================
+void flush_read_buffer(int fd)
 {
-    char c;
-    while(read(fd, &c, 1) > 0);
+    tcflush(fd, TCIFLUSH);
 }
 
-/*
-uint8_t decode(int fd, uint16_t len)
+//  ===========================================================================
+//  Flushes write buffer.
+//  ===========================================================================
+void flush_write_buffer(int fd)
+{
+    tcflush(fd, TCOFLUSH);
+}
+
+//  ===========================================================================
+//  Returns decoded data.
+//  ===========================================================================
+uint8_t decode(int fd, char *data)
 {
 
 
 
 }
-*/
+
 
 //  ===========================================================================
 //  Returns data block from sensor.
 //  ===========================================================================
 void read_data(int fd, char *data)
 {
-
     char    c;
     uint8_t i;
+    int     n;
+    bool    end;
 
     i = 0;
-    while (read(fd, &c, 1) > 0 && c != '\n')
+
+/*
+    end = false;
+
+    while (end==false)
     {
+        n = read(fd, data, RET_DATA_BLOCK_MAX);
+        if (n < 0)
+        {
+            perror("Read from port");
+            data = 0;
+            return;
+        }
+
+        data[n] = 0;
+        printf("Buffer = %s:%d", data, n);
+
+        if ((n > 0) && (data[n] == STRING_LF) && (data[n-1] == STRING_LF))
+        {
+            end = true;
+        }
+    }
+*/
+
+    while (read(fd, &c, 1) > 0 && c != STRING_LF)
+    {
+        perror("Read char");
         data[i++] = c;
+        printf("Data = %c\n", c);
     }
+    perror("End read char");
 
-}
-
-//  ===========================================================================
-//  Sends command.
-//  ===========================================================================
-int send_command(int fd, char command[2], const char *string)
-{
-    /*
-        fd is file descriptor.
-        command is 2 chars.
-        string + command must be <= 16 chars.
-    */
-
-    ssize_t err;
-    char    buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
-
-    /* concatenate command with string & line feed. */
-    strcpy(buf, command);
-    strcat(buf, string);
-    strcat(buf, LF);
-
-    if (DEBUG)
-    {
-        printf("Command  = %s\n", command);
-        printf("String   = %s\n", string);
-        printf("Combined = %s\n", buf);
-    }
-
-    err = write(fd, buf, strlen(buf));
-    if (err < 0)
-    {
-        return (err);
-    }
-
-    usleep( 100000 );
-    return (0);
-
-//    while(read(fd, &c, 1) > 0 && c != STRING_LF);
 }
 
 //  ===========================================================================
 //  Returns version information.
 //  ===========================================================================
-int get_version(int fd, char string[16], version_t *version)
+int get_version(int fd, version_t *version)
 {
-    int     err;
+    int  err;
+    char buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
 
-    if (DEBUG) PRINT_CMD(CMD_GET_VERSION);
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
 
-    empty_buffer(fd);
+    strcpy(buf, CMD_GET_VERSION);
+    strcat(buf, LF);
 
-    err = send_command(fd, CMD_GET_VERSION, string);
+    if (DEBUG) PRINT_CMD(buf);
+
+    err = write(fd, buf, strlen(buf));
+
     if (err < 0)
     {
-        if (DEBUG) printf("Error sending command, err = %d.\n", err);
-        return (err);
+        if (DEBUG) perror("Write to port");
+        return (-1);
     }
+    else perror("Write to port");
+
+//    usleep( 100000 );
 
     read_data(fd, version->command);
     read_data(fd, version->string);
@@ -170,13 +190,85 @@ int get_version(int fd, char string[16], version_t *version)
     read_data(fd, version->protocol);
     read_data(fd, version->serial);
 
+    printf("Return command = %s\n", version->command);
+    printf("Return string  = %s\n", version->string);
+    printf("Vendor   : %s\n", version->vendor);
+    printf("Product  : %s\n", version->product);
+    printf("Firmware : %s\n", version->firmware);
+    printf("Protocol : %s\n", version->protocol);
+    printf("Serial   : %s\n", version->serial);
+
+    return (0);
+
+}
+
+//  ===========================================================================
+//  Returns all data until LF LF.
+//  ===========================================================================
+int get_data(int fd)
+{
+    char    c;
+
+    printf("Return string = ");
+    while (read(fd, &c, 1) > 0)
+    {
+        printf("%c", c);
+    }
+    printf("\n");
+
     return (0);
 }
 
+//  ===========================================================================
+//  Changes communication bit rate.
+//  ===========================================================================
+int set_bit_rate(int fd, char rate[6], char string[16])
+{
+    int  err;
+    char command[2] = {'\0'};
+    char string_ret[16] = {'\0'};
+    char status[2] = {'\0'};
+    char sum[2] = {'\0'};
+    char buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
 
+    /* concatenate command with string & line feed. */
+    strcpy(buf, CMD_SET_BIT_RATE);
+    strcat(buf, rate);
+    strcat(buf, string);
+    strcat(buf, LF);
+
+    if (DEBUG)
+    {
+        printf("Command  = %s\n", CMD_SET_BIT_RATE);
+        printf("Rate     = %s\n", rate);
+//        printf("String   = %s\n", string);
+        printf("Combined = %s\n", buf);
+    }
+
+    if (DEBUG) PRINT_CMD(CMD_SET_BIT_RATE);
+
+    err = write(fd, buf, strlen(buf));
+
+    read_data(fd, command);
+    read_data(fd, string_ret);
+    read_data(fd, status);
+    read_data(fd, sum);
+
+    printf("Command = %s\n", command);
+    printf("String  = %s\n", string_ret);
+    printf("Status  = %s\n", status);
+    printf("Sum     = %s\n", sum);
+
+//    err = get_data(fd);
+
+    return (err); // Need to return error code.
+}
+
+//  ===========================================================================
+//  Main routine.
+//  ===========================================================================
 int main(void)
 {
-
     int fd;
     int err;
 
@@ -186,25 +278,31 @@ int main(void)
     /* Open port. */
     fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
-    if (fd < 0) printf("Could not open port\n");
-    else printf("Opened USB port\n");
-    empty_buffer(fd);
-
-    err = get_version(fd, "jaguar", &version);
-    if (err < 0)
+    if (fd < 0)
     {
-        printf("Error %d!\n", err);
+        perror(USB_PORT);
+        exit(-1);
     }
+    else perror(USB_PORT);
 
+    /* Flush buffers. */
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
+
+    err = get_version(fd, &version);
+    perror("Get version");
+
+/*
     printf("Return command = %s\n", version.command);
     printf("Return string  = %s\n", version.string);
-    printf("Vendor: %s\n", version.vendor);
-    printf("Product: %s\n", version.product);
-    printf("Firmware: %s\n", version.firmware);
-    printf("Protocol: %s\n", version.protocol);
-    printf("Serial: %s\n", version.serial);
-
+    printf("Vendor   : %s\n", version.vendor);
+    printf("Product  : %s\n", version.product);
+    printf("Firmware : %s\n", version.firmware);
+    printf("Protocol : %s\n", version.protocol);
+    printf("Serial   : %s\n", version.serial);
+*/
     close(fd);
 
     return (0);
 }
+
