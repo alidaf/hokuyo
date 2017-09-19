@@ -198,29 +198,24 @@ int get_version(int fd, version_t *version)
     {
         printf("Error writing command.\n");
         perror("Write to port");
-        return (-1);
+        return (err);
     }
-//    else perror("Write to port");
 
-    usleep( 100000 );
+    usleep( 100000 );   // Definitely needs this!
 
-    err = read_data(fd, version->command);
-    err = read_data(fd, version->string);
-    err = read_data(fd, version->vendor);
-    err = read_data(fd, version->product);
-    err = read_data(fd, version->firmware);
-    err = read_data(fd, version->protocol);
-    err = read_data(fd, version->serial);
-
-//    printf("Return command : %s\n", version->command);
-//    printf("Return string  : %s\n", version->string);
-//    printf("VERSION INFO.\n\n");
-//    printf("\tVendor   : %s\n", version->vendor);
-//    printf("\tProduct  : %s\n", version->product);
-//    printf("\tFirmware : %s\n", version->firmware);
-//    printf("\tProtocol : %s\n", version->protocol);
-//    printf("\tSerial   : %s\n", version->serial);
-//    printf("\n");
+    /*
+        Error checking could be applied to
+        each read_data but since the data
+        is meant for display only, any
+        errors will be evident.
+    */
+    read_data(fd, version->command);
+    read_data(fd, version->string);
+    read_data(fd, version->vendor);
+    read_data(fd, version->product);
+    read_data(fd, version->firmware);
+    read_data(fd, version->protocol);
+    read_data(fd, version->serial);
 
     return (err);
 }
