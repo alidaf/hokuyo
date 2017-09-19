@@ -142,7 +142,7 @@
 #define DATA_BLOCK_LEN  64
 #define DATA_SUM_LEN     1
 #define DATA_STATUS_LEN  2
-#define DATA_NULL        3
+#define DATA_EOL_LEN     2 // Accounts for 2 LF for end of data line.
 
 // ASCII codes for commands and data.
 #define LF "\n" // Line Feed.

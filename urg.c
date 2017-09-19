@@ -89,28 +89,6 @@ void flush_write_buffer(int fd)
 }
 
 //  ===========================================================================
-//  Returns data block from sensor.
-//  ===========================================================================
-int get_data(int fd, char *data)
-{
-    char c;
-    int  i;
-
-    i = 0;
-    while (read(fd, &c, 1) > 0 && (c != STRING_LF))
-    {
-        data[i++] = c;
-    }
-    return (i-1);
-
-}
-
-//  ===========================================================================
-//  Returns decoded data.
-//  ===========================================================================
-
-
-//  ===========================================================================
 //  Returns data sum.
 //  ===========================================================================
 char get_data_sum(char *data)
@@ -134,26 +112,62 @@ char get_data_sum(char *data)
 }
 
 //  ===========================================================================
+//  Returns data block from sensor.
+//  ===========================================================================
+int get_data(int fd, char *data)
+{
+    char c;
+    int  i;
+
+    i = 0;
+
+/*
+    while (read(fd, &c, 1) > 0 && (c != STRING_LF))
+    {
+        data[i++] = c;
+    }
+    return (i-1);
+*/
+
+    while (read(fd, &c, 1) > 0 && (c != STRING_LF))
+    {
+        data[i++] = c;
+    }
+
+//    data[i+1] = STRING_LF;
+
+    return (i-1);
+
+}
+
+//  ===========================================================================
+//  Returns decoded data.
+//  ===========================================================================
+
+
+//  ===========================================================================
 //  Turns laser on, returns status.
 //  ===========================================================================
 int set_laser_on(int fd, char string[DATA_STRING_LEN])
 {
-    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
+    char cmd[DATA_CMD_LEN + DATA_STRING_LEN + 1];
     int  err;
 
-    char command[DATA_CMD_LEN];
-    char status[DATA_STATUS_LEN];
+//    char command[DATA_CMD_LEN + DATA_STRING_LEN];
+//    char status[DATA_STATUS_LEN + DATA_SUM_LEN + DATA_EOL_LEN];
+    char command[DATA_BLOCK_LEN];
+    char status[DATA_BLOCK_LEN];
 
     flush_write_buffer(fd);
     flush_read_buffer(fd);
 
-    strcpy(buf, CMD_SET_LASER_ON);
-//    strcat(buf, string);  // Don't know why this kills the return data!
-    strcat(buf, LF);
+    strcpy(cmd, CMD_SET_LASER_ON);
+//    strcat(cmd, string);  // Don't know why this kills the return data!
+    strcat(cmd, LF);
 
-    if (DEBUG) PRINT_CMD(buf);
+    if (DEBUG) PRINT_CMD(cmd);
 
-    err = write(fd, buf, strlen(buf));
+    err = write(fd, cmd, strlen(cmd));
 
     if (err < 0)
     {
@@ -182,22 +196,24 @@ int set_laser_on(int fd, char string[DATA_STRING_LEN])
 //  ===========================================================================
 int set_laser_off(int fd, char string[DATA_STRING_LEN])
 {
-    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
+    char cmd[DATA_CMD_LEN + DATA_STRING_LEN + 1];
     int  err;
 
-    char command[DATA_CMD_LEN];
-    char status[DATA_NULL];
+//    char command[DATA_CMD_LEN + DATA_STRING_LEN];
+//    char status[DATA_STATUS_LEN + DATA_SUM_LEN + DATA_EOL_LEN];
+    char command[DATA_BLOCK_LEN];
+    char status[DATA_BLOCK_LEN];
 
     flush_write_buffer(fd);
     flush_read_buffer(fd);
 
-    strcpy(buf, CMD_SET_LASER_OFF);
-//    strcat(buf, string);  // Don't know why this kills the return data!
-    strcat(buf, LF);
+    strcpy(cmd, CMD_SET_LASER_OFF);
+//    strcat(cmd, string);  // Don't know why this kills the return data!
+    strcat(cmd, LF);
 
-    if (DEBUG) PRINT_CMD(buf);
+    if (DEBUG) PRINT_CMD(cmd);
 
-    err = write(fd, buf, strlen(buf));
+    err = write(fd, cmd, strlen(cmd));
 
     if (err < 0)
     {
@@ -226,19 +242,19 @@ int set_laser_off(int fd, char string[DATA_STRING_LEN])
 //  ===========================================================================
 int get_version(int fd, char string[16], version_t *version)
 {
-    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
+    char cmd[DATA_CMD_LEN + DATA_STRING_LEN];
     int  err;
 
 //    flush_write_buffer(fd);
 //    flush_read_buffer(fd);
 
-    strcpy(buf, CMD_GET_VERSION);
+    strcpy(cmd, CMD_GET_VERSION);
 //    strcat(buf, string);  // Don't know why this kills the return data!
-    strcat(buf, LF);
+    strcat(cmd, LF);
 
-    if (DEBUG) PRINT_CMD(buf);
+    if (DEBUG) PRINT_CMD(cmd);
 
-    err = write(fd, buf, strlen(buf));
+    err = write(fd, cmd, strlen(cmd));
 
     if (err < 0)
     {
@@ -350,6 +366,8 @@ int main(void)
     }
 
     err = set_laser_on(fd, "Jaguar");
+    err = set_laser_on(fd, "Jaguar");
+    set_laser_off(fd, "Jaguar");
     set_laser_off(fd, "Jaguar");
 
     char sum;
