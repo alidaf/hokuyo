@@ -16,8 +16,6 @@
 */
 //  ===========================================================================
 
-
-
 #include "urg.h"
 #include <unistd.h>	    // UNIX standard function definitions.
 #include <stdio.h>	    // Standard Input/Output definitions.
@@ -27,58 +25,6 @@
 #include <fcntl.h>	    // File control definitions.
 #include <stdbool.h>	// Boolean definitions.
 #include <termios.h>	// POSIX terminal control definitions.
-
-#define DEBUG 1 // Debugging output switch.
-
-/* Debug output. */
-#define PRINT_CMD(x) printf("Sending command: %s\n", x);
-
-/* Error handling. */
-#define PRINT_ERROR(x) printf("Error: %s\n", x); exit(1);
-
-/* Length of command code and string. */
-#define CMD_CODE_LEN    2
-#define CMD_STRING_LEN 14
-
-/* Command codes. */
-#define CMD_SET_LASER_ON    "BM"    // Turn laser on.
-#define CMD_SET_LASER_OFF   "QT"    // Turn laser off.
-#define CMD_SET_LASER_RESET "RS"    // Reset sensor state.
-#define CMD_SET_TIME_ADJUST "TM"    // Adjust sensor time to match host.
-#define CMD_SET_BIT_RATE    "SS"    // Adjust bit rate for RS232C.
-#define CMD_SET_MOTOR_SPEED "CR"    // Adjust sensor motor speed.
-#define CMD_SET_SENSITIVITY "HS"    // Set sensitivity mode.
-#define CMD_SET_MALFUNCTION "DB"    // Simulate a malfunction.
-#define CMD_GET_VERSION     "VV"    // Send version details.
-#define CMD_GET_SPEC        "PP"    // Send sensor specification.
-#define CMD_GET_RUN_STATE   "II"    // Send sensor run state.
-#define CMD_GET_DATA_CONT2  "MS"    // Continuous data acquisition (2-byte).
-#define CMD_GET_DATA_CONT3  "MD"    // Continuous data acquisition (3-byte).
-#define CMD_GET_DATA_SING2  "GS"    // Measurement data (2-byte).
-#define CMD_GET_DATA_SING3  "GD"    // Measurement data (3-byte).
-
-#define BIT_RATE_1 "019200" //  19.2 kbps.
-#define BIT_RATE_2 "038400" //  38.4 kbps.
-#define BIT_RATE_3 "057600" //  57.6 kbps
-#define BIT_RATE_4 "115200" // 115.2 kbps.
-#define BIT_RATE_5 "250000" //   250 kbps.
-#define BIT_RATE_6 "500000" //   500 kbps.
-#define BIT_RATE_7 "750000" //   750 kbps.
-
-/* Number of lines returned for each command. */
-#define RET_VERSION_LINES    7
-
-/* Maximum data block size */
-#define RET_DATA_BLOCK_MAX  64
-
-// ASCII codes for commands and data.
-#define LF "\n" // Line Feed.
-#define CR "\r" // Carriage Return.
-
-#define STRING_NULL '\0'
-#define STRING_LF   '\n'
-
-#define USB_PORT "/dev/ttyACM0" // Output port for USB.
 
 //  Commands ------------------------------------------------------------------
 
@@ -127,14 +73,6 @@ int init_port()
 }
 
 //  ===========================================================================
-//  Turns laser on, returns status.
-//  ===========================================================================
-int set_laser_on(int fd)
-{
-    
-}
-
-//  ===========================================================================
 //  Flushes read buffer.
 //  ===========================================================================
 void flush_read_buffer(int fd)
@@ -151,24 +89,15 @@ void flush_write_buffer(int fd)
 }
 
 //  ===========================================================================
-//  Returns decoded data.
-//  ===========================================================================
-void decode(int fd, char *data)
-{
-
-}
-
-
-//  ===========================================================================
 //  Returns data block from sensor.
 //  ===========================================================================
-int read_data(int fd, char *data)
+int get_data(int fd, char *data)
 {
     char c;
     int  i;
 
     i = 0;
-    while (read(fd, &c, 1) > 0 && c != STRING_LF)
+    while (read(fd, &c, 1) > 0 && (c != STRING_LF))
     {
         data[i++] = c;
     }
@@ -177,17 +106,134 @@ int read_data(int fd, char *data)
 }
 
 //  ===========================================================================
+//  Returns decoded data.
+//  ===========================================================================
+
+
+//  ===========================================================================
+//  Returns data sum.
+//  ===========================================================================
+char get_data_sum(char *data)
+{
+    uint8_t  i;
+    uint16_t val;
+    uint8_t  sum;
+    uint8_t  len;
+
+    val = 0;
+    len = strlen(data);
+
+    for (i = 0; i < len; i++)
+    {
+        val += data[i];
+    }
+
+    sum = (val & 0x3f) + 0x30;
+
+    return (sum);
+}
+
+//  ===========================================================================
+//  Turns laser on, returns status.
+//  ===========================================================================
+int set_laser_on(int fd, char string[DATA_STRING_LEN])
+{
+    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
+    int  err;
+
+    char command[DATA_CMD_LEN];
+    char status[DATA_STATUS_LEN];
+
+    flush_write_buffer(fd);
+    flush_read_buffer(fd);
+
+    strcpy(buf, CMD_SET_LASER_ON);
+//    strcat(buf, string);  // Don't know why this kills the return data!
+    strcat(buf, LF);
+
+    if (DEBUG) PRINT_CMD(buf);
+
+    err = write(fd, buf, strlen(buf));
+
+    if (err < 0)
+    {
+        printf("Error writing command.\n");
+        perror("Set laser on");
+        return (err);
+    }
+
+    usleep( 100000 ); // Definitely needs this!
+
+    get_data(fd, command);
+    get_data(fd, status);
+
+    printf("\tCommand: %s\n", command);
+    printf("\tStatus: %s\n", status);
+    printf("\n");
+
+    flush_read_buffer(fd);
+
+    return (err);
+
+}
+
+//  ===========================================================================
+//  Turns laser off.
+//  ===========================================================================
+int set_laser_off(int fd, char string[DATA_STRING_LEN])
+{
+    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
+    int  err;
+
+    char command[DATA_CMD_LEN];
+    char status[DATA_NULL];
+
+    flush_write_buffer(fd);
+    flush_read_buffer(fd);
+
+    strcpy(buf, CMD_SET_LASER_OFF);
+//    strcat(buf, string);  // Don't know why this kills the return data!
+    strcat(buf, LF);
+
+    if (DEBUG) PRINT_CMD(buf);
+
+    err = write(fd, buf, strlen(buf));
+
+    if (err < 0)
+    {
+        printf("Error writing command.\n");
+        perror("Set laser on");
+        return (err);
+    }
+
+    usleep( 100000 ); // Definitely needs this!
+
+    get_data(fd, command);
+    get_data(fd, status);
+
+    printf("\tCommand: %s\n", command);
+    printf("\tStatus: %s\n", status);
+    printf("\n");
+
+    flush_read_buffer(fd);
+
+    return (err);
+
+}
+
+//  ===========================================================================
 //  Returns version information in version_t.
 //  ===========================================================================
-int get_version(int fd, version_t *version)
+int get_version(int fd, char string[16], version_t *version)
 {
-    char buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
+    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
     int  err;
 
 //    flush_write_buffer(fd);
 //    flush_read_buffer(fd);
 
     strcpy(buf, CMD_GET_VERSION);
+//    strcat(buf, string);  // Don't know why this kills the return data!
     strcat(buf, LF);
 
     if (DEBUG) PRINT_CMD(buf);
@@ -204,37 +250,22 @@ int get_version(int fd, version_t *version)
     usleep( 100000 );   // Definitely needs this!
 
     /*
-        Error checking could be applied to
-        each read_data but since the data
-        is meant for display only, any
-        errors will be evident.
+    Error checking could be applied to
+    each read_data but since the data
+    is meant for display only, any
+    errors will be evident.
     */
-    read_data(fd, version->command);
-    read_data(fd, version->string);
-    read_data(fd, version->vendor);
-    read_data(fd, version->product);
-    read_data(fd, version->firmware);
-    read_data(fd, version->protocol);
-    read_data(fd, version->serial);
+    get_data(fd, version->command);
+    get_data(fd, version->string);
+    get_data(fd, version->vendor);
+    get_data(fd, version->product);
+    get_data(fd, version->firmware);
+    get_data(fd, version->protocol);
+    get_data(fd, version->serial);
+
+    flush_read_buffer(fd);
 
     return (err);
-}
-
-//  ===========================================================================
-//  Returns all data until LF LF.
-//  ===========================================================================
-int get_data(int fd)
-{
-    char    c;
-
-    printf("Return string = ");
-    while (read(fd, &c, 1) > 0)
-    {
-        printf("%c", c);
-    }
-    printf("\n");
-
-    return (0);
 }
 
 //  ===========================================================================
@@ -247,7 +278,7 @@ int set_bit_rate(int fd, char rate[6], char string[16])
     char string_ret[16] = {'\0'};
     char status[2] = {'\0'};
     char sum[2] = {'\0'};
-    char buf[CMD_CODE_LEN+CMD_STRING_LEN+1];
+    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
 
     /* concatenate command with string & line feed. */
     strcpy(buf, CMD_SET_BIT_RATE);
@@ -267,10 +298,10 @@ int set_bit_rate(int fd, char rate[6], char string[16])
 
     err = write(fd, buf, strlen(buf));
 
-    read_data(fd, command);
-    read_data(fd, string_ret);
-    read_data(fd, status);
-    read_data(fd, sum);
+    get_data(fd, command);
+    get_data(fd, string_ret);
+    get_data(fd, status);
+    get_data(fd, sum);
 
     printf("Command = %s\n", command);
     printf("String  = %s\n", string_ret);
@@ -287,10 +318,11 @@ int set_bit_rate(int fd, char rate[6], char string[16])
 //  ===========================================================================
 int main(void)
 {
-    int fd;
-    int err;
+    int     fd;
+    int     err;
 
     version_t version = {"", "", "", "", "", "", ""};
+//    id = "Jaguar";
 //    version_t version = malloc(sizeof *version);
 
     fd = init_port();
@@ -299,7 +331,7 @@ int main(void)
     flush_write_buffer(fd);
     flush_read_buffer(fd);
 
-    err = get_version(fd, &version);
+    err = get_version(fd, "Jaguar", &version);
     if (err < 0)
     {
         printf("Error getting version information.\n");
@@ -307,6 +339,8 @@ int main(void)
     else
     {
         printf("VERSION INFO.\n\n");
+        printf("\tCommand  : %s\n", version.command);
+        printf("\tString   : %s\n", version.string);
         printf("\tVendor   : %s\n", version.vendor);
         printf("\tProduct  : %s\n", version.product);
         printf("\tFirmware : %s\n", version.firmware);
@@ -314,6 +348,24 @@ int main(void)
         printf("\tSerial   : %s\n", version.serial);
         printf("\n");
     }
+
+    err = set_laser_on(fd, "Jaguar");
+    set_laser_off(fd, "Jaguar");
+
+    char sum;
+    sum = get_data_sum("FIRM:3.4.03(17/Dec./2012)");
+    printf("Sum for FIRM:3.4.03(17/Dec./2012) = %c\n", sum);
+    sum = get_data_sum("PROT:SCIP 2.0");
+    printf("Sum for PROT:SCIP 2.0 = %c\n", sum);
+    sum = get_data_sum("SERI:H1620245");
+    printf("Sum for SERI:H1620245 = %c\n", sum);
+    sum = get_data_sum("00");
+    printf("Sum for 00 = %c\n", sum);
+    sum = get_data_sum("01");
+    printf("Sum for 01 = %c\n", sum);
+    sum = get_data_sum("02");
+    printf("Sum for 02 = %c\n", sum);
+
 
     close(fd);
 

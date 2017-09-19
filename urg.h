@@ -96,17 +96,76 @@
 
 //  ===========================================================================
 
+#define DEBUG 1 // Debugging output switch.
+
+/* Debug output. */
+#define PRINT_CMD(x) printf("Sending command: %s\n", x);
+
+/* Error handling. */
+#define PRINT_ERROR(x) printf("Error: %s\n", x); exit(1);
+
+/* Length of command code and string. */
+#define CMD_CODE_LEN    2
+#define CMD_STRING_LEN 14
+
+/* Command codes. */
+#define CMD_SET_LASER_ON    "BM"    // Turn laser on.
+#define CMD_SET_LASER_OFF   "QT"    // Turn laser off.
+#define CMD_SET_LASER_RESET "RS"    // Reset sensor state.
+#define CMD_SET_TIME_ADJUST "TM"    // Adjust sensor time to match host.
+#define CMD_SET_BIT_RATE    "SS"    // Adjust bit rate for RS232C.
+#define CMD_SET_MOTOR_SPEED "CR"    // Adjust sensor motor speed.
+#define CMD_SET_SENSITIVITY "HS"    // Set sensitivity mode.
+#define CMD_SET_MALFUNCTION "DB"    // Simulate a malfunction.
+#define CMD_GET_VERSION     "VV"    // Send version details.
+#define CMD_GET_SPEC        "PP"    // Send sensor specification.
+#define CMD_GET_RUN_STATE   "II"    // Send sensor run state.
+#define CMD_GET_DATA_CONT2  "MS"    // Continuous data acquisition (2-byte).
+#define CMD_GET_DATA_CONT3  "MD"    // Continuous data acquisition (3-byte).
+#define CMD_GET_DATA_SING2  "GS"    // Measurement data (2-byte).
+#define CMD_GET_DATA_SING3  "GD"    // Measurement data (3-byte).
+
+#define BIT_RATE_1 "019200" //  19.2 kbps.
+#define BIT_RATE_2 "038400" //  38.4 kbps.
+#define BIT_RATE_3 "057600" //  57.6 kbps
+#define BIT_RATE_4 "115200" // 115.2 kbps.
+#define BIT_RATE_5 "250000" //   250 kbps.
+#define BIT_RATE_6 "500000" //   500 kbps.
+#define BIT_RATE_7 "750000" //   750 kbps.
+
+/* Number of lines returned for each command. */
+#define RET_VERSION_LINES    7
+
+/* Maximum data block size */
+#define DATA_CMD_LEN     2
+#define DATA_STRING_LEN 16
+#define DATA_BLOCK_LEN  64
+#define DATA_SUM_LEN     1
+#define DATA_STATUS_LEN  2
+#define DATA_NULL        3
+
+// ASCII codes for commands and data.
+#define LF "\n" // Line Feed.
+#define CR "\r" // Carriage Return.
+
+#define STRING_NULL '\0'
+#define STRING_LF   '\n'
+#define STRING_CR   '\r'
+
+#define USB_PORT "/dev/ttyACM0" // Output port for USB.
+
+
 //  Types. --------------------------------------------------------------------
 
 typedef struct version_t
 {
-    char command[2];
-    char string[16];
-    char vendor[64];
-    char product[64];
-    char firmware[64];
-    char protocol[64];
-    char serial[64];
+    char command[DATA_CMD_LEN];
+    char string[DATA_STRING_LEN];
+    char vendor[DATA_BLOCK_LEN];
+    char product[DATA_BLOCK_LEN];
+    char firmware[DATA_BLOCK_LEN];
+    char protocol[DATA_BLOCK_LEN];
+    char serial[DATA_BLOCK_LEN];
 } version_t;
 
 
