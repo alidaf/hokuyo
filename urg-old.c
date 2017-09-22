@@ -119,7 +119,7 @@ int serial_open(serial_t *serial, const char *device, long baud)
 //  ===========================================================================
 //  Closes serial port.
 //  ===========================================================================
-int serial_close(serial_t *serial)
+int serial_close(serial_t *serial);
 {
     return close(serial->fd);
 }
@@ -165,28 +165,40 @@ int get_data(serial_t *serial, char *data)
 
     i = 0;
 
-    while (read(serial->fd, &c, 1) > 0 && (c != STRING_LF))
+/*
+    while (read(fd, &c, 1) > 0 && (c != STRING_LF))
     {
         data[i++] = c;
     }
+    return (i-1);
+*/
+
+    while (read(&serial->fd, &c, 1) > 0 && (c != STRING_LF))
+    {
+        data[i++] = c;
+    }
+
+//    data[i+1] = STRING_LF;
 
     return (i-1);
 
 }
 
 //  ===========================================================================
-//  Turns laser on, returns status in data.
+//  Turns laser on, returns status.
 //  ===========================================================================
-int set_laser_on(serial_t *serial, char *data)
+int set_laser_on(serial_t *serial, char string[DATA_STRING_LEN])
 {
     int  err;
 
 //    char command[DATA_CMD_LEN + DATA_STRING_LEN];
 //    char status[DATA_STATUS_LEN + DATA_SUM_LEN + DATA_EOL_LEN];
-    char *cmd;
-    char *status;
+    char cmd[DATA_BLOCK_LEN];
+    char status[DATA_BLOCK_LEN];
 
-    serial_flush(serial);
+    serial_flush(&serial->fd);
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
 
     strcpy(cmd, CMD_SET_LASER_ON);
 //    strcat(cmd, string);  // Don't know why this kills the return data!
@@ -194,7 +206,7 @@ int set_laser_on(serial_t *serial, char *data)
 
     if (DEBUG) PRINT_CMD(cmd);
 
-    err = write(serial->fd, cmd, strlen(cmd));
+    err = write(&serial->fd, cmd, strlen(cmd));
 
     if (err < 0)
     {
@@ -205,24 +217,157 @@ int set_laser_on(serial_t *serial, char *data)
 
     usleep( 100000 ); // Definitely needs this!
 
-    err = get_data(serial, &cmd);
-    if (err < 0)
-    {
-        printf("Error getting command.\n");
-        return (err);
-    }
-    err = get_data(serial, &status);
-    if (err < 0)
-    {
-        printf("Error getting status.\n");
-        return (err);
-    }
+    get_data(&serial->fd, cmd);
+    get_data(&serial->fd, status);
 
     printf("\tCommand: %s\n", cmd);
     printf("\tStatus: %s\n", status);
     printf("\n");
 
+//    flush_read_buffer(fd);
+
     return (err);
+
+}
+
+//  ===========================================================================
+//  Turns laser off.
+//  ===========================================================================
+int set_laser_off(serial_t *serial, char string[DATA_STRING_LEN])
+{
+    int  err;
+
+//    char command[DATA_CMD_LEN + DATA_STRING_LEN];
+//    char status[DATA_STATUS_LEN + DATA_SUM_LEN + DATA_EOL_LEN];
+    char cmd[DATA_BLOCK_LEN];
+    char status[DATA_BLOCK_LEN];
+
+    serial_flush(&serial->fd);
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
+
+    strcpy(cmd, CMD_SET_LASER_OFF);
+//    strcat(cmd, string);  // Don't know why this kills the return data!
+    strcat(cmd, LF);
+
+    if (DEBUG) PRINT_CMD(cmd);
+
+    err = write(&serial->fd, cmd, strlen(cmd));
+
+    if (err < 0)
+    {
+        printf("Error writing command.\n");
+        perror("Set laser on");
+        return (err);
+    }
+
+    usleep( 100000 ); // Definitely needs this!
+
+    get_data(serial->fd, cmd);
+    get_data(serial->fd, status);
+
+    printf("\tCommand: %s\n", cmd);
+    printf("\tStatus: %s\n", status);
+    printf("\n");
+
+//    flush_read_buffer(fd);
+
+    return (err);
+
+}
+
+//  ===========================================================================
+//  Returns version information in version_t.
+//  ===========================================================================
+int get_version(sensor_t *sensor, char string[16])
+{
+    char cmd[DATA_CMD_LEN + DATA_STRING_LEN];
+    int  err;
+
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
+
+    strcpy(cmd, CMD_GET_VERSION);
+//    strcat(buf, string);  // Don't know why this kills the return data!
+    strcat(cmd, LF);
+
+    if (DEBUG) PRINT_CMD(cmd);
+
+    serial_flush(&sensor->serial.);
+    err = write(&sensor->serial.fd, cmd, strlen(cmd));
+
+    if (err < 0)
+    {
+        printf("Error writing command.\n");
+        perror("Write to port");
+        return (err);
+    }
+
+    usleep( 100000 );   // Definitely needs this!
+
+    /*
+    Error checking could be applied to
+    each read_data but since the data
+    is meant for display only, any
+    errors will be evident.
+    */
+    get_data(&sensor->serial.fd, &sensor->version.command);
+    get_data(&sensor->serial.fd, &sensor->version.string);
+    get_data(&sensor->serial.fd, &sensor->version.vendor);
+    get_data(&sensor->serial.fd, &sensor->version.product);
+    get_data(&sensor->serial.fd, &sensor->version.firmware);
+    get_data(&sensor->serial.fd, &sensor->version.protocol);
+    get_data(&sensor->serial.fd, &sensor->version.serial);
+
+//    flush_read_buffer(fd);
+
+    return (err);
+}
+
+//  ===========================================================================
+//  Changes communication bit rate.
+//  ===========================================================================
+int set_bit_rate(serial_t *serial, char rate[6], char string[16])
+{
+    int  err;
+    char command[2] = {'\0'};
+    char string_ret[16] = {'\0'};
+    char status[2] = {'\0'};
+    char sum[2] = {'\0'};
+    char buf[DATA_CMD_LEN + DATA_STRING_LEN + 1];
+
+    /* concatenate command with string & line feed. */
+    strcpy(buf, CMD_SET_BIT_RATE);
+    strcat(buf, rate);
+    strcat(buf, string);
+    strcat(buf, LF);
+
+    if (DEBUG)
+    {
+        printf("Command  = %s\n", CMD_SET_BIT_RATE);
+        printf("Rate     = %s\n", rate);
+//        printf("String   = %s\n", string);
+        printf("Combined = %s\n", buf);
+    }
+
+    if (DEBUG) PRINT_CMD(CMD_SET_BIT_RATE);
+
+    serial_flush(&serial.fd);
+    err = write(&serial.fd, buf, strlen(buf));
+
+    get_data(&serial->fd, command);
+    get_data(&serial->fd, string_ret);
+    get_data(&serial->fd, status);
+    get_data(&serial->fd, sum);
+
+    printf("Command = %s\n", command);
+    printf("String  = %s\n", string_ret);
+    printf("Status  = %s\n", status);
+    printf("Sum     = %s\n", sum);
+
+//    err = get_data(fd);
+
+    return (err); // Need to return error code.
 }
 
 //  ===========================================================================
@@ -230,30 +375,60 @@ int set_laser_on(serial_t *serial, char *data)
 //  ===========================================================================
 int main(void)
 {
+//    int     fd;
     int     err;
 
     sensor_t sensor;
 
-    const char *device = "/dev/ttyACM0";
-    long baud = 115200;
+    version_t version = {"", "", "", "", "", "", ""};
+//    id = "Jaguar";
+//    version_t version = malloc(sizeof *version);
 
-    char data[64];
-
-    err = serial_open(&sensor.serial, device, baud);
+    err = serial_open(&sensor);
     if (err < 0)
     {
         printf("Error initialising port.\n");
     }
 
-    err = serial_close(&sensor.serial);
+    err = get_version(&sensor, "Jaguar");
     if (err < 0)
     {
-        printf("Error closing port.\n");
+        printf("Error getting version information.\n");
+    }
+    else
+    {
+        printf("VERSION INFO.\n\n");
+        printf("\tCommand  : %s\n", version.command);
+        printf("\tString   : %s\n", version.string);
+        printf("\tVendor   : %s\n", version.vendor);
+        printf("\tProduct  : %s\n", version.product);
+        printf("\tFirmware : %s\n", version.firmware);
+        printf("\tProtocol : %s\n", version.protocol);
+        printf("\tSerial   : %s\n", version.serial);
+        printf("\n");
     }
 
-    err = set_laser_on(&sensor.serial, &data);
+    err = set_laser_on(&sensor.serial, "Jaguar");
+    err = set_laser_on(&sensor.serial, "Jaguar");
+    set_laser_off(&sensor.serial, "Jaguar");
+    set_laser_off(&sensor.serial, "Jaguar");
+/*
+    char sum;
+    sum = get_data_sum("FIRM:3.4.03(17/Dec./2012)");
+    printf("Sum for FIRM:3.4.03(17/Dec./2012) = %c\n", sum);
+    sum = get_data_sum("PROT:SCIP 2.0");
+    printf("Sum for PROT:SCIP 2.0 = %c\n", sum);
+    sum = get_data_sum("SERI:H1620245");
+    printf("Sum for SERI:H1620245 = %c\n", sum);
+    sum = get_data_sum("00");
+    printf("Sum for 00 = %c\n", sum);
+    sum = get_data_sum("01");
+    printf("Sum for 01 = %c\n", sum);
+    sum = get_data_sum("02");
+    printf("Sum for 02 = %c\n", sum);
+*/
 
-    printf("Data = %s\n", data);
+    serial_close(&sensor.serial);
 
     return (0);
 }
