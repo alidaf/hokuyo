@@ -29,63 +29,65 @@
 //  Commands ------------------------------------------------------------------
 
 //  ===========================================================================
+//  Clears serial port.
+//  ===========================================================================
+void clear_port(int fd)
+{
+    tcdrain(fd);
+    tcflush(fd, TCIOFLUSH);
+}
+
+//  ===========================================================================
 //  Initialises serial port.
 //  ===========================================================================
 int init_port()
 {
-    struct termios tty;
+    struct termios options;
 
     int fd;
+
+    int flags = 0;
 
     fd = open(USB_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
     if (fd < 0)
     {
-        perror(USB_PORT);
+        perror("Error opening port");
         exit(-1);
     }
 
-    if (tcgetattr(fd, &tty) != 0)
-    {
-        perror("tcgetattr");
-    }
-    else
-    {
-        cfsetospeed(&tty, B9600);
-        cfsetispeed(&tty, B9600);
+    flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
 
-        tty.c_cflag &= ~PARENB;
-        tty.c_cflag &= ~CSTOPB;
-        tty.c_cflag &= ~CSIZE;
-        tty.c_cflag |=  CS8;
-        tty.c_cflag &= ~CRTSCTS;
-        tty.c_cflag |=  CLOCAL | CREAD;
+    // Get current port options.
+    tcgetattr(fd, &options);
 
-        tty.c_iflag |=  IGNPAR | IGNCR;
-        tty.c_iflag &= ~(IXON | IXOFF | IXANY);
-        tty.c_iflag |=  ICANON;
-        tty.c_iflag &= ~OPOST;
+    // Set port options.
+    options.c_iflag = 0;
+    options.c_oflag = 0;
 
-        tcsetattr(fd, TCSANOW, &tty);
-    }
+    options.c_cflag &= ~(CSIZE | PARENB | CSTOPB);
+    options.c_cflag |= CS8 | CREAD | CLOCAL;
+    options.c_lflag &= ~(ICANON | ECHO | ISIG | IEXTEN);
+
+    options.c_cc[VMIN] = 0;
+    options.c_cc[VTIME] = 0;
+
+    cfsetospeed(&options, B19200);
+    cfsetispeed(&options, B19200);
+
+    tcsetattr(fd, TCSADRAIN, &options);
+    clear_port(fd);
 
     return fd;
 }
 
 //  ===========================================================================
-//  Flushes read buffer.
+//  Writes command to port.
 //  ===========================================================================
-void flush_read_buffer(int fd)
+int write_command(int fd, const char *data, int size)
 {
-    tcflush(fd, TCIFLUSH);
-}
-
-//  ===========================================================================
-//  Flushes write buffer.
-//  ===========================================================================
-void flush_write_buffer(int fd)
-{
-    tcflush(fd, TCOFLUSH);
+    return write(fd, data, size);
 }
 
 //  ===========================================================================
@@ -141,25 +143,20 @@ int get_data(int fd, char *data)
 }
 
 //  ===========================================================================
-//  Returns decoded data.
-//  ===========================================================================
-
-
-//  ===========================================================================
 //  Turns laser on, returns status.
 //  ===========================================================================
 int set_laser_on(int fd, char string[DATA_STRING_LEN])
 {
-    char cmd[DATA_CMD_LEN + DATA_STRING_LEN + 1];
     int  err;
 
 //    char command[DATA_CMD_LEN + DATA_STRING_LEN];
 //    char status[DATA_STATUS_LEN + DATA_SUM_LEN + DATA_EOL_LEN];
-    char command[DATA_BLOCK_LEN];
+    char cmd[DATA_BLOCK_LEN];
     char status[DATA_BLOCK_LEN];
 
-    flush_write_buffer(fd);
-    flush_read_buffer(fd);
+    clear_port(fd);
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
 
     strcpy(cmd, CMD_SET_LASER_ON);
 //    strcat(cmd, string);  // Don't know why this kills the return data!
@@ -178,14 +175,14 @@ int set_laser_on(int fd, char string[DATA_STRING_LEN])
 
     usleep( 100000 ); // Definitely needs this!
 
-    get_data(fd, command);
+    get_data(fd, cmd);
     get_data(fd, status);
 
-    printf("\tCommand: %s\n", command);
+    printf("\tCommand: %s\n", cmd);
     printf("\tStatus: %s\n", status);
     printf("\n");
 
-    flush_read_buffer(fd);
+//    flush_read_buffer(fd);
 
     return (err);
 
@@ -196,16 +193,16 @@ int set_laser_on(int fd, char string[DATA_STRING_LEN])
 //  ===========================================================================
 int set_laser_off(int fd, char string[DATA_STRING_LEN])
 {
-    char cmd[DATA_CMD_LEN + DATA_STRING_LEN + 1];
     int  err;
 
 //    char command[DATA_CMD_LEN + DATA_STRING_LEN];
 //    char status[DATA_STATUS_LEN + DATA_SUM_LEN + DATA_EOL_LEN];
-    char command[DATA_BLOCK_LEN];
+    char cmd[DATA_BLOCK_LEN];
     char status[DATA_BLOCK_LEN];
 
-    flush_write_buffer(fd);
-    flush_read_buffer(fd);
+    clear_port(fd);
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
 
     strcpy(cmd, CMD_SET_LASER_OFF);
 //    strcat(cmd, string);  // Don't know why this kills the return data!
@@ -224,14 +221,14 @@ int set_laser_off(int fd, char string[DATA_STRING_LEN])
 
     usleep( 100000 ); // Definitely needs this!
 
-    get_data(fd, command);
+    get_data(fd, cmd);
     get_data(fd, status);
 
-    printf("\tCommand: %s\n", command);
+    printf("\tCommand: %s\n", cmd);
     printf("\tStatus: %s\n", status);
     printf("\n");
 
-    flush_read_buffer(fd);
+//    flush_read_buffer(fd);
 
     return (err);
 
@@ -254,6 +251,7 @@ int get_version(int fd, char string[16], version_t *version)
 
     if (DEBUG) PRINT_CMD(cmd);
 
+    clear_port(fd);
     err = write(fd, cmd, strlen(cmd));
 
     if (err < 0)
@@ -279,7 +277,7 @@ int get_version(int fd, char string[16], version_t *version)
     get_data(fd, version->protocol);
     get_data(fd, version->serial);
 
-    flush_read_buffer(fd);
+//    flush_read_buffer(fd);
 
     return (err);
 }
@@ -312,6 +310,7 @@ int set_bit_rate(int fd, char rate[6], char string[16])
 
     if (DEBUG) PRINT_CMD(CMD_SET_BIT_RATE);
 
+    clear_port(fd);
     err = write(fd, buf, strlen(buf));
 
     get_data(fd, command);
@@ -337,6 +336,8 @@ int main(void)
     int     fd;
     int     err;
 
+
+
     version_t version = {"", "", "", "", "", "", ""};
 //    id = "Jaguar";
 //    version_t version = malloc(sizeof *version);
@@ -344,8 +345,8 @@ int main(void)
     fd = init_port();
 
     /* Flush buffers. */
-    flush_write_buffer(fd);
-    flush_read_buffer(fd);
+//    flush_write_buffer(fd);
+//    flush_read_buffer(fd);
 
     err = get_version(fd, "Jaguar", &version);
     if (err < 0)
@@ -369,7 +370,7 @@ int main(void)
     err = set_laser_on(fd, "Jaguar");
     set_laser_off(fd, "Jaguar");
     set_laser_off(fd, "Jaguar");
-
+/*
     char sum;
     sum = get_data_sum("FIRM:3.4.03(17/Dec./2012)");
     printf("Sum for FIRM:3.4.03(17/Dec./2012) = %c\n", sum);
@@ -383,7 +384,7 @@ int main(void)
     printf("Sum for 01 = %c\n", sum);
     sum = get_data_sum("02");
     printf("Sum for 02 = %c\n", sum);
-
+*/
 
     close(fd);
 

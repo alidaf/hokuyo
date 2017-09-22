@@ -96,6 +96,11 @@
 
 //  ===========================================================================
 
+#include <stdint.h>
+#include <termios.h>
+
+//  Defines. ------------------------------------------------------------------
+
 #define DEBUG 1 // Debugging output switch.
 
 /* Debug output. */
@@ -157,7 +162,14 @@
 
 //  Types. --------------------------------------------------------------------
 
-typedef struct version_t
+enum
+{
+    RING_BUFFER_SIZE_SHIFT = 7,
+    RING_BUFFER_SIZE = 1 << RING_BUFFER_SIZE_SHIFT,
+    ERROR_MESSAGE_SIZE = 256,
+};
+
+typedef struct
 {
     char command[DATA_CMD_LEN];
     char string[DATA_STRING_LEN];
@@ -168,11 +180,25 @@ typedef struct version_t
     char serial[DATA_BLOCK_LEN];
 } version_t;
 
+typedef struct
+{
+    char *buffer;
+    int   size;
+    int   first;
+    int   last;
+} buffer_t;
 
-// Functions
-/*
-    encode_command
-    send_command
-    decode_data
-    check_errors
-*/
+typedef struct
+{
+    int fd;
+    struct termios settings;
+} serial_t;
+
+typedef struct
+{
+    uint8_t id;
+    version_t version;
+    serial_t serial;
+    char data[DATA_BLOCK_LEN];
+} sensor_t;
+
