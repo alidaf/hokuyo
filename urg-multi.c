@@ -16,7 +16,7 @@
 */
 //  ===========================================================================
 
-#include "urg.h"
+#include "urg-multi.h"
 #include <unistd.h>	    // UNIX standard function definitions.
 #include <stdio.h>	    // Standard Input/Output definitions.
 #include <stdlib.h>
@@ -182,6 +182,9 @@ int get_version(sensor_t *sensor, char string[16])
     char cmd[DATA_CMD_LEN + DATA_STRING_LEN];
     int  err;
 
+    char cmd_ret[64] = "";
+    char str_ret[64] = "";
+
     strcpy(cmd, CMD_GET_VERSION);
 //    strcat(buf, string);  // Don't know why this kills the return data!
     strcat(cmd, LF);
@@ -204,21 +207,110 @@ int get_version(sensor_t *sensor, char string[16])
         for the port to be ready.
     */
 
-    err = get_data(&sensor->serial, sensor->version.command);
+    err = get_data(&sensor->serial, cmd_ret); // Command echo.
     if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.string);
+    err = get_data(&sensor->serial, str_ret); // String echo.
     if (err < 0 ) return (err);
     err = get_data(&sensor->serial, sensor->version.vendor);
     if (err < 0 ) return (err);
+    printf("\tVendor   = %s.\n", sensor->version.vendor);
     err = get_data(&sensor->serial, sensor->version.product);
     if (err < 0 ) return (err);
+    printf("\tProduct  = %s.\n", sensor->version.product);
     err = get_data(&sensor->serial, sensor->version.firmware);
     if (err < 0 ) return (err);
+    printf("\tFirmware = %s.\n", sensor->version.firmware);
     err = get_data(&sensor->serial, sensor->version.protocol);
     if (err < 0 ) return (err);
+    printf("\tProtocol = %s.\n", sensor->version.protocol);
     err = get_data(&sensor->serial, sensor->version.serial);
+    if (err < 0 ) return (err);
+    printf("\tSerial   = %s.\n", sensor->version.serial);
+    printf("\n");
 
-    return (err);
+    return 0;
+}
+
+//  ===========================================================================
+//  Initialises sensor instance.
+//  ===========================================================================
+int sensor_init(void)
+//int sensor_init(sensor_t *sensor)
+{
+/*
+    Use this to allocate resources to each sensor instance.
+    For each instance, need to open unique tty port and assign id.
+
+    Currently only supports 1.
+*/
+
+    static bool    init = false; // 1st call.
+    static uint8_t index = 0;    // Number of sensors initialised.
+
+    sensor_t *sensor_temp; // Copy of sensor instance.
+
+    int     id = -1;
+    uint8_t i;
+    int     err;
+
+    // Set all instances of sensor to NULL on first call.
+
+    if (!init)
+        for (i = 0; i < SENSORS_MAX; i++)
+            sensor[i] = NULL;
+
+    // Get next available ID.
+    for (i = 0; i < SENSORS_MAX; i++)
+    {
+        if (sensor[i] == NULL)  // Not already initialised.
+        {
+            id = i;
+            i = SENSORS_MAX;    // Break out of loop.
+        }
+    }
+
+    if (id < 0) return -1;      // Didn't initialise!
+
+    // Allocate memory for sensor struct.
+    sensor_temp = malloc(sizeof(sensor));
+
+    // Return if unable to allocate memory.
+    if (sensor_temp == NULL) return -1;
+
+    const char *device = "/dev/ttyACM0"; // Serial port (assumed same for all).
+    long baud = BIT_RATE_0;              // Initial baud setting.
+
+    // Not needed because not running anything on 1st init only!
+    if (!init)
+    {
+        init = true;
+    }
+
+    // Need to open next available USB /edv/ttyACMx port here.
+
+    // Create the instance.
+    sensor_temp->id = id;
+
+    // Allocate a port - not sure if this stays the same for multiple sensors.
+
+    err = serial_open(&sensor_temp->serial, device, baud);
+    if (err < 0)
+    {
+        printf("Error opening serial port on %s.\n", device);
+        return -1;
+    }
+
+    err = get_version(sensor_temp, "Jaguar");
+    if (err < 0)
+    {
+        printf("Error getting version info for sensor %d.\n", id);
+        return -1;
+    }
+
+    sensor[index] = sensor_temp;
+    index++;
+
+    return 0;
 }
 
 //  ===========================================================================
@@ -227,37 +319,34 @@ int get_version(sensor_t *sensor, char string[16])
 int main(void)
 {
     int     err;
+    uint8_t num_sensors = 1;
+    uint8_t i;
 
-    sensor_t sensor;
+    //  Array of sensors.
+//    sensor_t *sensor[SENSORS_MAX];
 
-    const char *device = "/dev/ttyACM0";
-    long baud = 115200;
 
-    char data[64];
-
-    err = serial_open(&sensor.serial, device, baud);
-    if (err < 0)
+    for (i = 0; i < num_sensors; i++)
     {
-        printf("Error initialising port.\n");
+        err = sensor_init();
+        if (err < 0)
+        {
+            printf("Couldn't initialise sensor.\n");
+            return -1;
+        }
     }
 
-    err = get_version(&sensor, "Jaguar");
-    printf("Get version = %d\n", err);
-    if (err >= 0)
+    // Print out information for each sensor.
+    for (i = 0; i < num_sensors; i++)
     {
-        printf("Sensor Information.\n\n");
-        printf("\tVendor   : %s\n", sensor.version.vendor);
-        printf("\tProduct  : %s\n", sensor.version.product);
-        printf("\tFirmware : %s\n", sensor.version.firmware);
-        printf("\tProtocol : %s\n", sensor.version.protocol);
-        printf("\tSerial   : %s\n", sensor.version.serial);
+        printf("Sensor ID = %d.\n\n", sensor[i]->id);
+        printf("\tSerial ID = %d.\n", sensor[i]->serial.fd);
+        printf("\tVendor    = %s.\n", sensor[i]->version.vendor);
+        printf("\tProduct   = %s.\n", sensor[i]->version.vendor);
+        printf("\tFirmware  = %s.\n", sensor[i]->version.vendor);
+        printf("\tProtocol  = %s.\n", sensor[i]->version.vendor);
+        printf("\tSerial    = %s.\n", sensor[i]->version.vendor);
         printf("\n");
-    }
-
-    err = serial_close(&sensor.serial);
-    if (err < 0)
-    {
-        printf("Error closing port.\n");
     }
 
     return (0);

@@ -138,6 +138,8 @@
 #define BIT_RATE_6 "500000" //   500 kbps.
 #define BIT_RATE_7 "750000" //   750 kbps.
 
+#define BIT_RATE_0  115200  // Initial baud.
+
 /* Number of lines returned for each command. */
 #define RET_VERSION_LINES    7
 
@@ -159,13 +161,14 @@
 
 #define USB_PORT "/dev/ttyACM0" // Output port for USB.
 
+#define SENSORS_MAX 4   // Max number of sensors.
 
 //  Types. --------------------------------------------------------------------
 
 typedef struct
 {
-    char command[64];
-    char string[64];
+//    char command[64];
+//    char string[64];
     char vendor[64];
     char product[64];
     char firmware[64];
@@ -203,4 +206,7 @@ typedef struct
     serial_t serial;
     char data[DATA_BLOCK_LEN];
 } sensor_t;
+
+//  Array of sensors.
+sensor_t *sensor[SENSORS_MAX];
 

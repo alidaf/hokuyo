@@ -1,5 +1,5 @@
 //  ===========================================================================
-//  Driver for Hokuyo URG-04LX-UG01 laser scanner.
+//  App for testing return of laser scanner data via USB.
 //  ===========================================================================
 /*
     Copyright 2017 Darren Faulke <darren@alidaf.co.uk>
@@ -16,7 +16,6 @@
 */
 //  ===========================================================================
 
-#include "urg.h"
 #include <unistd.h>	    // UNIX standard function definitions.
 #include <stdio.h>	    // Standard Input/Output definitions.
 #include <stdlib.h>
@@ -25,6 +24,8 @@
 #include <fcntl.h>	    // File control definitions.
 #include <stdbool.h>	// Boolean definitions.
 #include <termios.h>	// POSIX terminal control definitions.
+
+#include "urg.h"
 
 //  Commands ------------------------------------------------------------------
 
@@ -40,9 +41,9 @@ void serial_flush(serial_t *serial)
 //  ===========================================================================
 //  Sets serial baud rate.
 //  ===========================================================================
-int serial_set_baud(serial_t *serial, long baud)
+int serial_set_baud(serial_t *serial, uint16_t baud)
 {
-    long baud_val;
+    uint16_t baud_val;
 
     switch (baud)
     {
@@ -72,7 +73,7 @@ int serial_set_baud(serial_t *serial, long baud)
     cfsetispeed(&serial->settings, baud_val);
 
     tcsetattr(serial->fd, TCSADRAIN, &serial->settings);
-    serial_flush(serial);
+    serial_flush(serial->fd);
 
     return (0);
 }
@@ -80,7 +81,7 @@ int serial_set_baud(serial_t *serial, long baud)
 //  ===========================================================================
 //  Initialises serial port.
 //  ===========================================================================
-int serial_open(serial_t *serial, const char *device, long baud)
+int serial_open(serial_t *serial, const char *device, uint16_t baud)
 {
 
     int flags = 0;
@@ -117,7 +118,7 @@ int serial_open(serial_t *serial, const char *device, long baud)
 }
 
 //  ===========================================================================
-//  Closes serial port.
+//  Closes port.
 //  ===========================================================================
 int serial_close(serial_t *serial)
 {
@@ -125,71 +126,23 @@ int serial_close(serial_t *serial)
 }
 
 //  ===========================================================================
+//  Opens instance of URG sensor.
+//  ===========================================================================
+int sensor_open(sensor_t *sensor, const char *device, uint16_t baud)
+{
+    sensor->active = false;
+    return serial_open(&sensor->serial, device, baud);
+
+}
+//  ===========================================================================
 //  Writes command to port.
 //  ===========================================================================
-int write_command(serial_t *serial, const char *data, int size)
+int serial_write(serial_t *serial, const char *cmd, uint8_t len)
 {
-    return write(serial->fd, data, size);
-}
 
-//  ===========================================================================
-//  Returns data sum.
-//  ===========================================================================
-char get_data_sum(char *data)
-{
-    uint8_t  i;
-    uint16_t val;
-    uint8_t  sum;
-    uint8_t  len;
+    if (DEBUG) PRINT_CMD(cmd);
 
-    val = 0;
-    len = strlen(data);
-
-    for (i = 0; i < len; i++)
-    {
-        val += data[i];
-    }
-
-    sum = (val & 0x3f) + 0x30;
-
-    return (sum);
-}
-
-//  ===========================================================================
-//  Returns data block from sensor.
-//  ===========================================================================
-int get_data(serial_t *serial, char data[DATA_BLOCK_LEN])
-{
-    char c;
-    int  i;
-
-    i = 0;
-
-    while (read(serial->fd, &c, 1) > 0 && (c != STRING_LF))
-    {
-        data[i++] = c;
-    }
-
-    return (i-1);
-
-}
-
-//  ===========================================================================
-//  Returns version information in version_t.
-//  ===========================================================================
-int get_version(sensor_t *sensor, char string[16])
-{
-    char cmd[DATA_CMD_LEN + DATA_STRING_LEN];
-    int  err;
-
-    strcpy(cmd, CMD_GET_VERSION);
-//    strcat(buf, string);  // Don't know why this kills the return data!
-    strcat(cmd, LF);
-
-    printf("Command = %s\n", CMD_GET_VERSION);
-
-    serial_flush(&sensor->serial);
-    err = write(sensor->serial.fd, cmd, strlen(cmd));
+    err = write(serial->fd, cmd, len);
 
     if (err < 0)
     {
@@ -199,26 +152,48 @@ int get_version(sensor_t *sensor, char string[16])
     }
 
     usleep( 100000 );   // Definitely needs this!
-    /*
-        It would be better to have a routine that waits
-        for the port to be ready.
-    */
 
-    err = get_data(&sensor->serial, sensor->version.command);
-    if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.string);
-    if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.vendor);
-    if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.product);
-    if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.firmware);
-    if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.protocol);
-    if (err < 0 ) return (err);
-    err = get_data(&sensor->serial, sensor->version.serial);
+    return err;
+}
 
-    return (err);
+//  ===========================================================================
+//  Waits until data is available on serial port.
+//  ===========================================================================
+int serial_wait(sensor_serial_t *serial, int timeout)
+{
+    fd_set rfds;
+    struct timeval tv;
+
+    FD_ZERO(&rfds);
+    FD_SET(serial->fd, &rfds);
+
+    tv.tv_sec = timeout / 1000;
+    tv.tv_usec = (timeout % 1000) * 1000;
+
+    if (select(serial->fd + 1, &rfds, NULL, NULL,
+              (timeout < 0) ? NULL : &tv) <= 0) return (0);
+
+    return 1;
+}
+
+//  ===========================================================================
+//  Returns data block from sensor.
+//  ===========================================================================
+int serial_read(serial_t *serial, char *data)
+{
+    char c;
+    int  i;
+
+    i = 0;
+
+    while (read(fd, &c, 1) > 0 && (c != STRING_LF))
+    {
+        data[i++] = c;
+    }
+
+//    data[i+1] = STRING_LF;
+
+    return (i-1);
 }
 
 //  ===========================================================================
@@ -226,39 +201,48 @@ int get_version(sensor_t *sensor, char string[16])
 //  ===========================================================================
 int main(void)
 {
-    int     err;
-
     sensor_t sensor;
+
+    int     fd;
+    int     err;
+    char    id[16] = "Jaguar";
+    char   *data;
 
     const char *device = "/dev/ttyACM0";
     long baud = 115200;
 
-    char data[64];
+    err = sensor_open(&sensor.serial, device, baud);
+    printf("Open sensor error = %d\n", err);
 
-    err = serial_open(&sensor.serial, device, baud);
-    if (err < 0)
-    {
-        printf("Error initialising port.\n");
-    }
+    err = serial_write(&sensor, "VV", 3);
+    printf("Send command error = %d\n", err);
+    err = serial_read(&sensor.serial, data);
+    printf("Data = %s\n", data);
 
-    err = get_version(&sensor, "Jaguar");
-    printf("Get version = %d\n", err);
-    if (err >= 0)
-    {
-        printf("Sensor Information.\n\n");
-        printf("\tVendor   : %s\n", sensor.version.vendor);
-        printf("\tProduct  : %s\n", sensor.version.product);
-        printf("\tFirmware : %s\n", sensor.version.firmware);
-        printf("\tProtocol : %s\n", sensor.version.protocol);
-        printf("\tSerial   : %s\n", sensor.version.serial);
-        printf("\n");
-    }
+    err = serial_write(&sensor, "BM", 3);
+    printf("Send command error = %d\n", err);
+    err = serial_read(&sensor.serial, data);
+    printf("Data = %s\n", data);
+    err = serial_write(&sensor, "BM", 3);
+    printf("Send command error = %d\n", err);
+    err = serial_read(&sensor.serial, data);
+    printf("Data = %s\n", data);
 
-    err = serial_close(&sensor.serial);
-    if (err < 0)
-    {
-        printf("Error closing port.\n");
-    }
+    err = serial_write(&sensor, "QT", 3);
+    printf("Send command error = %d\n", err);
+    err = serial_read(&sensor.serial, data);
+    printf("Data = %s\n", data);
+    err = serial_write(&sensor, "QT", 3);
+    printf("Send command error = %d\n", err);
+    err = serial_read(&sensor.serial, data);
+    printf("Data = %s\n", data);
+
+    err = serial_write(&sensor, "VV", 3);
+    printf("Send command error = %d\n", err);
+    err = serial_read(&sensor.serial, data);
+    printf("Data = %s\n", data);
+
+    close(fd);
 
     return (0);
 }
